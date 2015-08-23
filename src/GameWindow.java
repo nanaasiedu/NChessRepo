@@ -15,6 +15,7 @@ import javax.swing.JComboBox;
 import javax.swing.JPanel;
 import javax.swing.JTextPane;
 import javax.swing.JTextField;
+import javax.swing.Timer;
 
 import java.awt.Font;
 
@@ -32,11 +33,11 @@ import java.awt.Canvas;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 
-//TODO: timer logic
-//TODO: place pieces function. requires enum
-
 public class GameWindow {
     
+	public static final int MILI_IN_MINUTE = 1000*60;
+	public static final int MILI_IN_SECOND = 1000;
+	
 	public static final int TILE_WIDTH = 55;
 	public static final int TILE_HEIGHT = 50;
 	public static final int A1_POSITION_X = 12;
@@ -70,9 +71,10 @@ public class GameWindow {
 	private JLabel btakenQueen_txt;
 	
 	private boolean timerEnabled;
+	private Timer timer;
 	private Integer time_limit;
-	private Time player1_Time;
-	private Time player2_Time;
+	private Time white_time;
+	private Time black_time;
 	private JTextField p1timer_txt;
 	private JTextField p2timer_txt;
 	
@@ -107,6 +109,7 @@ public class GameWindow {
 		initialize();
 		initializeFields(timerEnabled, time_limit);
 		placePieces(board);
+		timer.start();
 		
 	}
 
@@ -126,6 +129,14 @@ public class GameWindow {
 		board_pnl.setBounds(150, 13, 511, 465);
 		frame.getContentPane().add(board_pnl);
 		board_pnl.setLayout(null);
+		
+		timer = new Timer(MILI_IN_SECOND, new ActionListener() {
+			@Override
+			public void actionPerformed(ActionEvent arg0) {
+				timerEvent();
+			}
+			
+		});
 		
 		board = new Tile[NUM_ROWS][NUM_COLS];
 		
@@ -285,8 +296,10 @@ public class GameWindow {
 		this.timerEnabled = timerEnabled;
 		if (timerEnabled) {
 			this.time_limit = time_limit;
-			this.player1_Time = new Time (0, time_limit, 0);
-			this.player2_Time = new Time (0, time_limit, 0);
+			this.white_time = new Time (0, time_limit, 0);
+			this.black_time = new Time (0, time_limit, 0);
+			p1timer_txt.setText(white_time.toString());
+			p2timer_txt.setText(black_time.toString());
 		} 
 		
 		currTurn = WHITES_TURN;
@@ -351,7 +364,7 @@ public class GameWindow {
 				Tile tile = (Tile)e.getSource();
 				switch(state) {
 				  case IDLE:
-					  if (currTurn == WHITES_TURN && tile.isWhite() || currTurn == BLACKS_TURN && tile.isBlack()) {
+					  if (isWhiteTurn() && tile.isWhite() || currTurn == BLACKS_TURN && tile.isBlack()) {
 						  //SELECT PIECE
 						  tile.select(); // the current piece is now selected 
 						  selectedTile = tile;
@@ -431,9 +444,10 @@ public class GameWindow {
 						  if (isKingChecked()) {
 							  checkingTiles = accuseAllEnemyTiles(); 
 							  if (isCheckMate()) {
-								  JOptionPane.showMessageDialog(frame, "CHECKMATE! " + (currTurn == WHITES_TURN ? "Blacks" : "Whites") + " wins!");
+								  JOptionPane.showMessageDialog(frame, "CHECKMATE! " + (isWhiteTurn() ? "Blacks" : "Whites") + " wins!");
 								  getKing().setErrorBorder();
 								  state = GameState.CHECKMATE;
+								  timer.stop();
 							  } else {
 								  JOptionPane.showMessageDialog(frame, "CHECK!");	  
 							  }
@@ -454,6 +468,7 @@ public class GameWindow {
 	}
 	
 	private void promoteTile(Tile tile) {
+		// Promotes the pawn on the tile to a new piece of the player's choosing
 		Piece promotedPiece = null;
 		
 		Object[] possibilities = {"Queen", "Rook", "Bishop", "Knight"};
@@ -462,22 +477,22 @@ public class GameWindow {
 		                    "Choose a new piece",
 		                    "Promote your pawn",
 		                    JOptionPane.PLAIN_MESSAGE,
-		                    new ImageIcon(currTurn == WHITES_TURN ? "images/white_pawn.png" : "images/black_pawn.png"),
+		                    new ImageIcon(isWhiteTurn() ? "images/white_pawn.png" : "images/black_pawn.png"),
 		                    possibilities,
 		                    "Queen");
 		
 		switch(choosenPiece) {
 		case "Queen":
-			promotedPiece = (currTurn == WHITES_TURN ? Piece.Queen_W : Piece.Queen_B);
+			promotedPiece = (isWhiteTurn() ? Piece.Queen_W : Piece.Queen_B);
 			break;
 		case "Rook":
-			promotedPiece = (currTurn == WHITES_TURN ? Piece.Rook_W : Piece.Rook_B);
+			promotedPiece = (isWhiteTurn() ? Piece.Rook_W : Piece.Rook_B);
 			break;
 		case "Bishop":
-			promotedPiece = (currTurn == WHITES_TURN ? Piece.Bishop_W : Piece.Bishop_B);
+			promotedPiece = (isWhiteTurn() ? Piece.Bishop_W : Piece.Bishop_B);
 			break;
 		case "Knights":
-			promotedPiece = (currTurn == WHITES_TURN ? Piece.Knight_W : Piece.Knight_B);
+			promotedPiece = (isWhiteTurn() ? Piece.Knight_W : Piece.Knight_B);
 			break;
 		}
 		
@@ -486,6 +501,7 @@ public class GameWindow {
 	}
 	
 	private void illegaliseAll(Tile[][] board) {
+		//illegalises all tiles 
 		for (int i = 0; i < board.length; i++) {
 			for (Tile tile : board[i]) {
 				tile.illegalise();
@@ -495,17 +511,23 @@ public class GameWindow {
 	}
 		
 	private void changeTurn() {
-		if (currTurn == WHITES_TURN) {
+		if (isWhiteTurn()) {
+			resetTime(white_time);
 			currTurn = BLACKS_TURN;
 		} else {
+			resetTime(black_time);
 			currTurn = WHITES_TURN;
 		}
 	} 
 	
+	private boolean isWhiteTurn() {
+		return currTurn == WHITES_TURN;
+	}
+	
 	private void checkWrongTurn(Tile tile) {
 		if (tile.hasPiece() && tile.isWhite() && currTurn == BLACKS_TURN ||
-			tile.hasPiece() && tile.isBlack() && currTurn == WHITES_TURN) {
-			JOptionPane.showMessageDialog(frame, "It's " + (currTurn == WHITES_TURN ? "whites" : "blacks") + " turn");
+			tile.hasPiece() && tile.isBlack() && isWhiteTurn()) {
+			JOptionPane.showMessageDialog(frame, "It's " + (isWhiteTurn() ? "whites" : "blacks") + " turn");
 			
 		}
 		
@@ -543,7 +565,7 @@ public class GameWindow {
 	}
 
 	private boolean isCastlingImpossible() {
-		if (currTurn == WHITES_TURN) {
+		if (isWhiteTurn()) {
 			return hasWhiteKingMoved || hasLeftWhiteRookMoved && hasRightWhiteRookMoved;
 		} else {
 			return hasBlackKingMoved || hasLeftBlackRookMoved && hasRightBlackRookMoved;
@@ -730,7 +752,7 @@ public class GameWindow {
 		
 		for (Tile[] row: board) {
 			for (Tile tile: row) {
-				if ((currTurn == WHITES_TURN ? tile.isBlack() : tile.isWhite()) && accuse(tile)) {
+				if ((isWhiteTurn() ? tile.isBlack() : tile.isWhite()) && accuse(tile)) {
 					suspectTiles.add(tile);
 				}
 			}
@@ -801,7 +823,7 @@ public class GameWindow {
 		//LEFT: try to legalise all tiles to the left of the rook
 		for (int i = pos_x - 1; i >= 0; i--) {
 			//if this tile failed to legalise then break the loop
-			if (board[pos_y][i].isKing() && (currTurn == WHITES_TURN ? board[pos_y][i].isWhite() :board[pos_y][i].isBlack())) {
+			if (board[pos_y][i].isKing() && (isWhiteTurn() ? board[pos_y][i].isWhite() :board[pos_y][i].isBlack())) {
 				return true;
 			} else if (board[pos_y][i].hasPiece()) {
 				break;
@@ -811,7 +833,7 @@ public class GameWindow {
 		//RIGHT: try to legalise all tiles to the right of the rook
 		for (int i = pos_x + 1; i < NUM_COLS; i++) {
 			//if this tile failed to legalise then break the loop
-			if (board[pos_y][i].isKing() && (currTurn == WHITES_TURN ? board[pos_y][i].isWhite() :board[pos_y][i].isBlack())){
+			if (board[pos_y][i].isKing() && (isWhiteTurn() ? board[pos_y][i].isWhite() :board[pos_y][i].isBlack())){
 				return true;
 			} else if (board[pos_y][i].hasPiece()) {
 				break;
@@ -821,7 +843,7 @@ public class GameWindow {
 		//DOWN: try to legalise all tiles below the rook
 		for (int j = pos_y - 1; j >= 0; j--) {
 			//if this tile failed to legalise then break the loop
-			if (board[j][pos_x].isKing() && (currTurn == WHITES_TURN ? board[j][pos_x].isWhite() :board[j][pos_x].isBlack())) {
+			if (board[j][pos_x].isKing() && (isWhiteTurn() ? board[j][pos_x].isWhite() :board[j][pos_x].isBlack())) {
 				return true;
 			} else if (board[j][pos_x].hasPiece()) {
 				break;
@@ -831,7 +853,7 @@ public class GameWindow {
 		//UP: try to legalise all tiles above the rook
 		for (int j = pos_y + 1; j < NUM_ROWS; j++) {
 			//if this tile failed to legalise then break the loop
-			if (board[j][pos_x].isKing() && (currTurn == WHITES_TURN ? board[j][pos_x].isWhite() :board[j][pos_x].isBlack())) {
+			if (board[j][pos_x].isKing() && (isWhiteTurn() ? board[j][pos_x].isWhite() :board[j][pos_x].isBlack())) {
 				return true;
 			} else if (board[j][pos_x].hasPiece()) {
 				break;
@@ -843,35 +865,35 @@ public class GameWindow {
 		
 	private boolean accuseKnight(int pos_x, int pos_y) {
 		// returns true if the knight in this position is checking a king
-		if (onBoard(pos_x-2,pos_y+1) && board[pos_y+1][pos_x-2].getPiece() == (currTurn == WHITES_TURN ? Piece.King_W : Piece.King_B)) {
+		if (onBoard(pos_x-2,pos_y+1) && board[pos_y+1][pos_x-2].getPiece() == (isWhiteTurn() ? Piece.King_W : Piece.King_B)) {
 			return true;
 		}
 		
-		if (onBoard(pos_x-2,pos_y-1) && board[pos_y-1][pos_x-2].getPiece() == (currTurn == WHITES_TURN ? Piece.King_W : Piece.King_B)) {
+		if (onBoard(pos_x-2,pos_y-1) && board[pos_y-1][pos_x-2].getPiece() == (isWhiteTurn() ? Piece.King_W : Piece.King_B)) {
 			return true;
 		}
 		
-		if (onBoard(pos_x+2,pos_y+1) && board[pos_y+1][pos_x+2].getPiece() == (currTurn == WHITES_TURN ? Piece.King_W : Piece.King_B)) {
+		if (onBoard(pos_x+2,pos_y+1) && board[pos_y+1][pos_x+2].getPiece() == (isWhiteTurn() ? Piece.King_W : Piece.King_B)) {
 			return true;
 		}
 		
-		if (onBoard(pos_x+2,pos_y-1) && board[pos_y-1][pos_x+2].getPiece() == (currTurn == WHITES_TURN ? Piece.King_W : Piece.King_B)) {
+		if (onBoard(pos_x+2,pos_y-1) && board[pos_y-1][pos_x+2].getPiece() == (isWhiteTurn() ? Piece.King_W : Piece.King_B)) {
 			return true;
 		}
 		
-		if (onBoard(pos_x-1,pos_y+2) && board[pos_y+2][pos_x-1].getPiece() == (currTurn == WHITES_TURN ? Piece.King_W : Piece.King_B)) {
+		if (onBoard(pos_x-1,pos_y+2) && board[pos_y+2][pos_x-1].getPiece() == (isWhiteTurn() ? Piece.King_W : Piece.King_B)) {
 			return true;
 		}
 		
-		if (onBoard(pos_x+1,pos_y+2) && board[pos_y+2][pos_x+1].getPiece() == (currTurn == WHITES_TURN ? Piece.King_W : Piece.King_B)) {
+		if (onBoard(pos_x+1,pos_y+2) && board[pos_y+2][pos_x+1].getPiece() == (isWhiteTurn() ? Piece.King_W : Piece.King_B)) {
 			return true;
 		}
 		
-		if (onBoard(pos_x+1,pos_y-2) && board[pos_y-2][pos_x+1].getPiece() == (currTurn == WHITES_TURN ? Piece.King_W : Piece.King_B)) {
+		if (onBoard(pos_x+1,pos_y-2) && board[pos_y-2][pos_x+1].getPiece() == (isWhiteTurn() ? Piece.King_W : Piece.King_B)) {
 			return true;
 		}
 		
-		if (onBoard(pos_x-1,pos_y-2) && board[pos_y-2][pos_x-1].getPiece() == (currTurn == WHITES_TURN ? Piece.King_W : Piece.King_B)) {
+		if (onBoard(pos_x-1,pos_y-2) && board[pos_y-2][pos_x-1].getPiece() == (isWhiteTurn() ? Piece.King_W : Piece.King_B)) {
 			return true;
 		}
 		
@@ -885,7 +907,7 @@ public class GameWindow {
 		for (int i = 1; i < NUM_TILES_DIAGONAL; i++) {
 		    if (!onBoard(pos_x-i, pos_y+i)) {
 		    	break;
-		    } else if (board[pos_y+i][pos_x-i].getPiece() == (currTurn == WHITES_TURN ? Piece.King_W : Piece.King_B)) {
+		    } else if (board[pos_y+i][pos_x-i].getPiece() == (isWhiteTurn() ? Piece.King_W : Piece.King_B)) {
 				return true;
 			} else if (board[pos_y+i][pos_x-i].hasPiece()){
 				break;
@@ -896,7 +918,7 @@ public class GameWindow {
 		for (int i = 1; i < NUM_TILES_DIAGONAL; i++) {
 		    if (!onBoard(pos_x+i, pos_y+i)) {
 		    	break;
-		    } else if (board[pos_y+i][pos_x+i].getPiece() == (currTurn == WHITES_TURN ? Piece.King_W : Piece.King_B)) {
+		    } else if (board[pos_y+i][pos_x+i].getPiece() == (isWhiteTurn() ? Piece.King_W : Piece.King_B)) {
 				return true;
 			} else if (board[pos_y+i][pos_x+i].hasPiece()){
 				break;
@@ -907,7 +929,7 @@ public class GameWindow {
 		for (int i = 1; i < NUM_TILES_DIAGONAL; i++) {
 		    if (!onBoard(pos_x+i, pos_y-i)) {
 		    	break;
-		    } else if (board[pos_y-i][pos_x+i].getPiece() == (currTurn == WHITES_TURN ? Piece.King_W : Piece.King_B)) {
+		    } else if (board[pos_y-i][pos_x+i].getPiece() == (isWhiteTurn() ? Piece.King_W : Piece.King_B)) {
 				return true;
 			} else if (board[pos_y-i][pos_x+i].hasPiece()){
 				break;
@@ -918,7 +940,7 @@ public class GameWindow {
 		for (int i = 1; i < NUM_TILES_DIAGONAL; i++) {
 		    if (!onBoard(pos_x-i, pos_y-i)) {
 		    	break;
-		    } else if (board[pos_y-i][pos_x-i].getPiece() == (currTurn == WHITES_TURN ? Piece.King_W : Piece.King_B)) {
+		    } else if (board[pos_y-i][pos_x-i].getPiece() == (isWhiteTurn() ? Piece.King_W : Piece.King_B)) {
 				return true;
 			} else if (board[pos_y-i][pos_x-i].hasPiece()){
 				break;
@@ -1080,7 +1102,7 @@ public class GameWindow {
 		if (tile.isEmpty()) {
 			tile.legalise();
 			return true;
-		} else if ((currTurn == WHITES_TURN ? tile.isBlack() : tile.isWhite())) {
+		} else if ((isWhiteTurn() ? tile.isBlack() : tile.isWhite())) {
 			tile.legalise();
 			return false;
 		} else {
@@ -1182,13 +1204,13 @@ public class GameWindow {
 		
 		
 		if (!isCastlingImpossible()) {
-			if (currTurn == WHITES_TURN ? !hasLeftWhiteRookMoved : !hasLeftBlackRookMoved) {
+			if (isWhiteTurn() ? !hasLeftWhiteRookMoved : !hasLeftBlackRookMoved) {
 				if (board[pos_y][pos_x-1].isLegal() && !isChecked(board[pos_y][pos_x-2])) {
 					tryToLegalise(pos_y, pos_x-2);
 				}
 			} 
 			
-			if (currTurn == WHITES_TURN ? !hasRightWhiteRookMoved : !hasRightBlackRookMoved) {
+			if (isWhiteTurn() ? !hasRightWhiteRookMoved : !hasRightBlackRookMoved) {
 				if (board[pos_y][pos_x+1].isLegal() && !isChecked(board[pos_y][pos_x+2])) {
 					tryToLegalise(pos_y, pos_x+2);
 				}
@@ -1211,13 +1233,13 @@ public class GameWindow {
 		int pos_y = tile.y(); // y coordinate of tile
 		
 		//LEFT: searches for rooks, queens and the enemy king to the left 
-		if (onBoard(pos_x-1,pos_y) && board[pos_y][pos_x-1].isKing() && (currTurn == WHITES_TURN ? board[pos_y][pos_x-1].isBlack() : board[pos_y][pos_x-1].isWhite())) {
+		if (onBoard(pos_x-1,pos_y) && board[pos_y][pos_x-1].isKing() && (isWhiteTurn() ? board[pos_y][pos_x-1].isBlack() : board[pos_y][pos_x-1].isWhite())) {
 			if (canEnemyKingMove(tile)) return true;
 		}
 		
 		for (int i = pos_x - 1; i >= 0; i--) {
-			if (board[pos_y][i].getPiece() == (currTurn == WHITES_TURN ? Piece.Rook_B : Piece.Rook_W) ||
-				board[pos_y][i].getPiece() == (currTurn == WHITES_TURN ? Piece.Queen_B : Piece.Queen_W)) {
+			if (board[pos_y][i].getPiece() == (isWhiteTurn() ? Piece.Rook_B : Piece.Rook_W) ||
+				board[pos_y][i].getPiece() == (isWhiteTurn() ? Piece.Queen_B : Piece.Queen_W)) {
 				return true;
 			} else if (board[pos_y][i].hasPiece()){
 				break;
@@ -1225,13 +1247,13 @@ public class GameWindow {
 		}
 		
 		//RIGHT: searches for rooks, queens and the enemy king to the right
-		if (onBoard(pos_x+1,pos_y) && board[pos_y][pos_x+1].isKing() && (currTurn == WHITES_TURN ? board[pos_y][pos_x+1].isBlack() : board[pos_y][pos_x+1].isWhite())) {
+		if (onBoard(pos_x+1,pos_y) && board[pos_y][pos_x+1].isKing() && (isWhiteTurn() ? board[pos_y][pos_x+1].isBlack() : board[pos_y][pos_x+1].isWhite())) {
 			if (canEnemyKingMove(tile)) return true;
 		}
 		
 		for (int i = pos_x + 1; i < NUM_COLS; i++) {
-			if (board[pos_y][i].getPiece() == (currTurn == WHITES_TURN ? Piece.Rook_B : Piece.Rook_W) ||
-				board[pos_y][i].getPiece() == (currTurn == WHITES_TURN ? Piece.Queen_B : Piece.Queen_W)) {
+			if (board[pos_y][i].getPiece() == (isWhiteTurn() ? Piece.Rook_B : Piece.Rook_W) ||
+				board[pos_y][i].getPiece() == (isWhiteTurn() ? Piece.Queen_B : Piece.Queen_W)) {
 				return true;
 			} else if (board[pos_y][i].hasPiece()){
 				break;
@@ -1239,13 +1261,13 @@ public class GameWindow {
 		}
 		
 		//DOWN: searches for rooks, queens and the enemy king below 
-		if (onBoard(pos_x,pos_y-1) && board[pos_y-1][pos_x].isKing() && (currTurn == WHITES_TURN ? board[pos_y-1][pos_x].isBlack() : board[pos_y-1][pos_x].isWhite())) {
+		if (onBoard(pos_x,pos_y-1) && board[pos_y-1][pos_x].isKing() && (isWhiteTurn() ? board[pos_y-1][pos_x].isBlack() : board[pos_y-1][pos_x].isWhite())) {
 			if (canEnemyKingMove(tile)) return true;
 		}
 		
 		for (int j = pos_y - 1; j >= 0; j--) {
-			if (board[j][pos_x].getPiece() == (currTurn == WHITES_TURN ? Piece.Rook_B : Piece.Rook_W) ||
-				board[j][pos_x].getPiece() == (currTurn == WHITES_TURN ? Piece.Queen_B : Piece.Queen_W)) {
+			if (board[j][pos_x].getPiece() == (isWhiteTurn() ? Piece.Rook_B : Piece.Rook_W) ||
+				board[j][pos_x].getPiece() == (isWhiteTurn() ? Piece.Queen_B : Piece.Queen_W)) {
 				return true;
 			} else if (board[j][pos_x].hasPiece()){
 				break;
@@ -1253,13 +1275,13 @@ public class GameWindow {
 		}
 		
 		//UP: searches for rooks, queens and the enemy king to the above
-		if (onBoard(pos_x,pos_y+1) && board[pos_y+1][pos_x].isKing() && (currTurn == WHITES_TURN ? board[pos_y+1][pos_x].isBlack() : board[pos_y+1][pos_x].isWhite())) {
+		if (onBoard(pos_x,pos_y+1) && board[pos_y+1][pos_x].isKing() && (isWhiteTurn() ? board[pos_y+1][pos_x].isBlack() : board[pos_y+1][pos_x].isWhite())) {
 			if (canEnemyKingMove(tile)) return true;
 		}
 		
 		for (int j = pos_y + 1; j < NUM_ROWS; j++) {
-			if (board[j][pos_x].getPiece() == (currTurn == WHITES_TURN ? Piece.Rook_B : Piece.Rook_W) ||
-				board[j][pos_x].getPiece() == (currTurn == WHITES_TURN ? Piece.Queen_B : Piece.Queen_W)) {
+			if (board[j][pos_x].getPiece() == (isWhiteTurn() ? Piece.Rook_B : Piece.Rook_W) ||
+				board[j][pos_x].getPiece() == (isWhiteTurn() ? Piece.Queen_B : Piece.Queen_W)) {
 					return true;
 			} else if (board[j][pos_x].hasPiece()){
 					break;
@@ -1267,7 +1289,7 @@ public class GameWindow {
 		}
 		
 		//Checks if pawns and enemy king are checking the tile
-		if(currTurn == WHITES_TURN) {
+		if(isWhiteTurn()) {
 			if (onBoard(pos_x-1,pos_y+1)) {		
 				if (board[pos_y+1][pos_x-1].isKing() && board[pos_y+1][pos_x-1].isBlack()) {
 					if (canEnemyKingMove(tile)) return true;
@@ -1314,8 +1336,8 @@ public class GameWindow {
 		for (int i = 1; i < NUM_TILES_DIAGONAL; i++) {
 		    if (!onBoard(pos_x-i, pos_y+i)) {
 		    	break;
-		    } else if (board[pos_y+i][pos_x-i].getPiece() == (currTurn == WHITES_TURN ? Piece.Bishop_B : Piece.Bishop_W) ||
-				board[pos_y+i][pos_x-i].getPiece() == (currTurn == WHITES_TURN ? Piece.Queen_B : Piece.Queen_W)) {
+		    } else if (board[pos_y+i][pos_x-i].getPiece() == (isWhiteTurn() ? Piece.Bishop_B : Piece.Bishop_W) ||
+				board[pos_y+i][pos_x-i].getPiece() == (isWhiteTurn() ? Piece.Queen_B : Piece.Queen_W)) {
 				return true;
 			} else if (board[pos_y+i][pos_x-i].hasPiece()){
 				break;
@@ -1326,8 +1348,8 @@ public class GameWindow {
 		for (int i = 1; i < NUM_TILES_DIAGONAL; i++) {
 		    if (!onBoard(pos_x+i, pos_y+i)) {
 		    	break;
-		    } else if (board[pos_y+i][pos_x+i].getPiece() == (currTurn == WHITES_TURN ? Piece.Bishop_B : Piece.Bishop_W) ||
-				board[pos_y+i][pos_x+i].getPiece() == (currTurn == WHITES_TURN ? Piece.Queen_B : Piece.Queen_W)) {
+		    } else if (board[pos_y+i][pos_x+i].getPiece() == (isWhiteTurn() ? Piece.Bishop_B : Piece.Bishop_W) ||
+				board[pos_y+i][pos_x+i].getPiece() == (isWhiteTurn() ? Piece.Queen_B : Piece.Queen_W)) {
 				return true;
 			} else if (board[pos_y+i][pos_x+i].hasPiece()){
 				break;
@@ -1338,8 +1360,8 @@ public class GameWindow {
 		for (int i = 1; i < NUM_TILES_DIAGONAL; i++) {
 		    if (!onBoard(pos_x+i, pos_y-i)) {
 		    	break;
-		    } else if (board[pos_y-i][pos_x+i].getPiece() == (currTurn == WHITES_TURN ? Piece.Bishop_B : Piece.Bishop_W) ||
-				board[pos_y-i][pos_x+i].getPiece() == (currTurn == WHITES_TURN ? Piece.Queen_B : Piece.Queen_W)) {
+		    } else if (board[pos_y-i][pos_x+i].getPiece() == (isWhiteTurn() ? Piece.Bishop_B : Piece.Bishop_W) ||
+				board[pos_y-i][pos_x+i].getPiece() == (isWhiteTurn() ? Piece.Queen_B : Piece.Queen_W)) {
 				return true;
 			} else if (board[pos_y-i][pos_x+i].hasPiece()){
 				break;
@@ -1350,8 +1372,8 @@ public class GameWindow {
 		for (int i = 1; i < NUM_TILES_DIAGONAL; i++) {
 		    if (!onBoard(pos_x-i, pos_y-i)) {
 		    	break;
-		    } else if (board[pos_y-i][pos_x-i].getPiece() == (currTurn == WHITES_TURN ? Piece.Bishop_B : Piece.Bishop_W) ||
-				board[pos_y-i][pos_x-i].getPiece() == (currTurn == WHITES_TURN ? Piece.Queen_B : Piece.Queen_W)) {
+		    } else if (board[pos_y-i][pos_x-i].getPiece() == (isWhiteTurn() ? Piece.Bishop_B : Piece.Bishop_W) ||
+				board[pos_y-i][pos_x-i].getPiece() == (isWhiteTurn() ? Piece.Queen_B : Piece.Queen_W)) {
 				return true;
 			} else if (board[pos_y-i][pos_x-i].hasPiece()){
 				break;
@@ -1359,35 +1381,35 @@ public class GameWindow {
 		}
 		
 		//Checks if knights are checking the tile
-		if (onBoard(pos_x-2,pos_y+1) && board[pos_y+1][pos_x-2].getPiece() == (currTurn == WHITES_TURN ? Piece.Knight_B : Piece.Knight_W)) {
+		if (onBoard(pos_x-2,pos_y+1) && board[pos_y+1][pos_x-2].getPiece() == (isWhiteTurn() ? Piece.Knight_B : Piece.Knight_W)) {
 			return true;
 		}
 		
-		if (onBoard(pos_x-2,pos_y-1) && board[pos_y-1][pos_x-2].getPiece() == (currTurn == WHITES_TURN ? Piece.Knight_B : Piece.Knight_W)) {
+		if (onBoard(pos_x-2,pos_y-1) && board[pos_y-1][pos_x-2].getPiece() == (isWhiteTurn() ? Piece.Knight_B : Piece.Knight_W)) {
 			return true;
 		}
 		
-		if (onBoard(pos_x+2,pos_y+1) && board[pos_y+1][pos_x+2].getPiece() == (currTurn == WHITES_TURN ? Piece.Knight_B : Piece.Knight_W)) {
+		if (onBoard(pos_x+2,pos_y+1) && board[pos_y+1][pos_x+2].getPiece() == (isWhiteTurn() ? Piece.Knight_B : Piece.Knight_W)) {
 			return true;
 		}
 		
-		if (onBoard(pos_x+2,pos_y-1) && board[pos_y-1][pos_x+2].getPiece() == (currTurn == WHITES_TURN ? Piece.Knight_B : Piece.Knight_W)) {
+		if (onBoard(pos_x+2,pos_y-1) && board[pos_y-1][pos_x+2].getPiece() == (isWhiteTurn() ? Piece.Knight_B : Piece.Knight_W)) {
 			return true;
 		}
 		
-		if (onBoard(pos_x-1,pos_y+2) && board[pos_y+2][pos_x-1].getPiece() == (currTurn == WHITES_TURN ? Piece.Knight_B : Piece.Knight_W)) {
+		if (onBoard(pos_x-1,pos_y+2) && board[pos_y+2][pos_x-1].getPiece() == (isWhiteTurn() ? Piece.Knight_B : Piece.Knight_W)) {
 			return true;
 		}
 		
-		if (onBoard(pos_x+1,pos_y+2) && board[pos_y+2][pos_x+1].getPiece() == (currTurn == WHITES_TURN ? Piece.Knight_B : Piece.Knight_W)) {
+		if (onBoard(pos_x+1,pos_y+2) && board[pos_y+2][pos_x+1].getPiece() == (isWhiteTurn() ? Piece.Knight_B : Piece.Knight_W)) {
 			return true;
 		}
 		
-		if (onBoard(pos_x+1,pos_y-2) && board[pos_y-2][pos_x+1].getPiece() == (currTurn == WHITES_TURN ? Piece.Knight_B : Piece.Knight_W)) {
+		if (onBoard(pos_x+1,pos_y-2) && board[pos_y-2][pos_x+1].getPiece() == (isWhiteTurn() ? Piece.Knight_B : Piece.Knight_W)) {
 			return true;
 		}
 		
-		if (onBoard(pos_x-1,pos_y-2) && board[pos_y-2][pos_x-1].getPiece() == (currTurn == WHITES_TURN ? Piece.Knight_B : Piece.Knight_W)) {
+		if (onBoard(pos_x-1,pos_y-2) && board[pos_y-2][pos_x-1].getPiece() == (isWhiteTurn() ? Piece.Knight_B : Piece.Knight_W)) {
 			return true;
 		}
 		
@@ -1411,7 +1433,7 @@ public class GameWindow {
 		
 		for (int j = 0; j < NUM_ROWS; j++) {
 			for (int i = 0; i < NUM_COLS; i++) {
-				if (currTurn == WHITES_TURN ? board[j][i].isWhite() && board[j][i].isKing() :
+				if (isWhiteTurn() ? board[j][i].isWhite() && board[j][i].isKing() :
 					                          board[j][i].isBlack() && board[j][i].isKing()) {
 					king = board[j][i];
 					break;
@@ -1421,4 +1443,54 @@ public class GameWindow {
 		
 		return king;
 	}
+	
+	//Timer functions --------------------------
+	private void timerEvent() {
+		//Activates every second
+		if (!timerEnabled) {
+			return;
+		}
+		
+		refreshTimes();
+		
+		if (isWhiteTurn() && totalSeconds(white_time) <= 0) {
+			JOptionPane.showMessageDialog(frame, "Times up! blacks win");
+		    state = GameState.CHECKMATE;
+		    timer.stop();
+		} else if(!isWhiteTurn() && totalSeconds(black_time) <= 0) {
+			JOptionPane.showMessageDialog(frame, "Times up! whites win");
+		    state = GameState.CHECKMATE;
+		    timer.stop();
+		}
+		
+	}
+	
+	private void refreshTimes() {
+		// Subtracts a second from the current active timer (dependant on the player's turn) and redisplays the new time
+		if (isWhiteTurn()) {
+			deductSecond(white_time);
+			p1timer_txt.setText(white_time.toString());
+		} else {
+			deductSecond(black_time);
+			p2timer_txt.setText(black_time.toString());
+		}
+	} 
+	
+	private void resetTime (Time time) {
+		//Resets the time back to the time limit entered
+		time.setTime(time_limit*MILI_IN_MINUTE);
+	}
+	
+	private void deductSecond(Time time) {
+		//Subtracts a second from the time
+		time.setTime(time.getTime() - MILI_IN_SECOND);
+		time.setHours(0);
+	}
+	
+	@SuppressWarnings("deprecation")
+	private int totalSeconds(Time time) {
+		//converts any time into seconds
+		return 3600*time.getHours() + 60*time.getMinutes() + time.getSeconds();
+	}
+	//---------------
 }
